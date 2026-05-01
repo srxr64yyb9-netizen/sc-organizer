@@ -112,6 +112,18 @@ textarea { min-height: 58px; resize: vertical; }
 .modal-item-title { font-size: 14px; font-weight: 500; color: var(--text); display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
 .modal-item-meta { font-size: 12px; color: var(--muted); margin-top: 3px; }
 .modal-empty { text-align: center; padding: 18px; color: var(--faint); font-size: 13px; }
+.goal-card { background: var(--navy); border-radius: 12px; padding: 20px 24px; margin-bottom: 18px; }
+.goal-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; flex-wrap: wrap; gap: 8px; }
+.goal-title { font-family: Georgia, serif; font-size: 17px; color: #fff; }
+.goal-amounts { text-align: right; }
+.goal-raised { font-size: 28px; font-weight: 700; color: var(--gold); font-family: Georgia, serif; line-height: 1; }
+.goal-target { font-size: 12px; color: rgba(255,255,255,0.45); margin-top: 3px; }
+.goal-bar-wrap { height: 14px; background: rgba(255,255,255,0.12); border-radius: 7px; overflow: hidden; margin-bottom: 10px; }
+.goal-bar-fill { height: 100%; background: linear-gradient(90deg, var(--gold), #e8c04a); border-radius: 7px; transition: width 0.6s ease; }
+.goal-meta { display: flex; justify-content: space-between; font-size: 12px; color: rgba(255,255,255,0.45); }
+.goal-milestones { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; }
+.milestone { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 20px; background: rgba(255,255,255,0.08); color: rgba(255,255,255,0.45); border: 1px solid rgba(255,255,255,0.1); }
+.milestone.reached { background: rgba(196,154,42,0.25); color: var(--gold); border-color: rgba(196,154,42,0.4); }
 </style>
 </head>
 <body>
@@ -146,6 +158,7 @@ textarea { min-height: 58px; resize: vertical; }
     <button class="tab-btn" id="tab-tasks" onclick="go('tasks')">Tasks</button>
     <button class="tab-btn" id="tab-service" onclick="go('service')">Service</button>
     <button class="tab-btn" id="tab-meetings" onclick="go('meetings')">Meetings</button>
+    <button class="tab-btn" id="tab-fundraising" onclick="go('fundraising')">Fundraising 💰</button>
   </div>
 
   <div class="main">
@@ -256,6 +269,40 @@ textarea { min-height: 58px; resize: vertical; }
       </div>
       <div id="mt-list"></div>
     </div>
+
+    <div class="panel" id="panel-fundraising">
+      <div class="goal-card">
+        <div class="goal-top">
+          <div class="goal-title">Annual Fundraising Goal</div>
+          <div class="goal-amounts">
+            <div class="goal-raised" id="fr-raised">$0</div>
+            <div class="goal-target" id="fr-target">of $1,000 goal</div>
+          </div>
+        </div>
+        <div class="goal-bar-wrap">
+          <div class="goal-bar-fill" id="fr-bar" style="width:0%"></div>
+        </div>
+        <div class="goal-meta">
+          <span id="fr-pct">0% to next milestone</span>
+          <span id="fr-remaining">$1,000 remaining</span>
+        </div>
+        <div class="goal-milestones" id="fr-milestones"></div>
+      </div>
+      <div class="stat-row" id="fr-stats"></div>
+      <div class="form-card">
+        <h3>Log fundraiser</h3>
+        <div class="form-row">
+          <input type="text" id="fr-name" placeholder="Fundraiser name" style="flex:2;">
+          <input type="date" id="fr-date">
+        </div>
+        <div class="form-row">
+          <input type="number" id="fr-amount" placeholder="Amount raised ($)" min="0" step="0.01">
+          <input type="text" id="fr-notes" placeholder="Notes (optional)">
+        </div>
+        <button class="btn btn-primary" onclick="addFundraiser()">Log fundraiser</button>
+      </div>
+      <div id="fr-list"></div>
+    </div>
   </div>
 </div>
 
@@ -287,8 +334,8 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-var D = { events:[], members:[], tasks:[], service:[], meetings:[], cy:new Date().getFullYear(), cm:new Date().getMonth() };
-var TABS = ['calendar','events','members','tasks','service','meetings'];
+var D = { events:[], members:[], tasks:[], service:[], meetings:[], fundraisers:[], cy:new Date().getFullYear(), cm:new Date().getMonth() };
+var TABS = ['calendar','events','members','tasks','service','meetings','fundraising'];
 var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 var DAYS = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 var WEEKDAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
@@ -309,6 +356,7 @@ window.addTask=addTask; window.delTask=delTask; window.setTaskStatus=setTaskStat
 window.addService=addService; window.delService=delService;
 window.addMeeting=addMeeting; window.delMeeting=delMeeting;
 window.openDayModal=openDayModal; window.closeDayModal=closeDayModal;
+window.addFundraiser=addFundraiser; window.delFundraiser=delFundraiser;
 
 function go(name){
   TABS.forEach(function(t){
@@ -405,6 +453,53 @@ function renderCalendar(){
   }).join('');
 }
 
+async function addFundraiser(){
+  var n=document.getElementById('fr-name').value.trim();
+  var a=parseFloat(document.getElementById('fr-amount').value);
+  if(!n){alert('Fundraiser name required.');return;}
+  if(isNaN(a)||a<0){alert('Please enter a valid amount.');return;}
+  await addDoc(collection(db,'fundraisers'),{name:n,date:document.getElementById('fr-date').value,amount:a,notes:document.getElementById('fr-notes').value.trim(),createdAt:Date.now()});
+  clr(['fr-name','fr-date','fr-amount','fr-notes']);
+}
+async function delFundraiser(id){ if(!id)return; await deleteDoc(doc(db,'fundraisers',id)); }
+function renderFundraising(){
+  var total=D.fundraisers.reduce(function(a,f){return a+(parseFloat(f.amount)||0);},0);
+  var STEP=500, START=1000;
+  var currentGoal = START;
+  while(total >= currentGoal) currentGoal += STEP;
+  var prevGoal = currentGoal - STEP;
+  var intoCurrentTier = total - prevGoal;
+  var tierSize = STEP;
+  if(currentGoal===START){ intoCurrentTier=total; tierSize=START; prevGoal=0; }
+  var pct = Math.min(100, Math.round(intoCurrentTier/tierSize*100));
+  document.getElementById('fr-raised').textContent='$'+total.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+  document.getElementById('fr-target').textContent='of $'+currentGoal.toLocaleString()+' goal';
+  document.getElementById('fr-bar').style.width=pct+'%';
+  document.getElementById('fr-pct').textContent=pct+'% to $'+currentGoal.toLocaleString()+' milestone';
+  document.getElementById('fr-remaining').textContent='$'+(currentGoal-total).toFixed(2)+' remaining';
+  var milestones=[], m=START;
+  while(m<=Math.max(currentGoal+STEP, START+STEP)){
+    var reached=total>=m;
+    milestones.push('<span class="milestone'+(reached?' reached':'')+'">$'+m.toLocaleString()+(reached?' ✓':'')+'</span>');
+    m+=STEP;
+    if(m>10000) break;
+  }
+  document.getElementById('fr-milestones').innerHTML=milestones.join('');
+  document.getElementById('fr-stats').innerHTML=sc('Fundraisers',D.fundraisers.length)+sc('Total Raised','$'+total.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,','))+sc('Current Goal','$'+currentGoal.toLocaleString());
+  if(!D.fundraisers.length){document.getElementById('fr-list').innerHTML='<div class="empty">No fundraisers logged yet.</div>';return;}
+  var sorted=[].concat(D.fundraisers).sort(function(a,b){return b.date.localeCompare(a.date);});
+  document.getElementById('fr-list').innerHTML='<div class="list-card">'+sorted.map(function(f){
+    var fid=f.id;
+    var row='<div class="list-item"><div class="item-body">';
+    row+='<div class="item-title">'+f.name+' <span class="badge b-service">$'+parseFloat(f.amount).toFixed(2)+'</span></div>';
+    row+='<div class="item-meta">'+fmt(f.date)+(f.notes?' &middot; '+f.notes:'')+'</div>';
+    row+='</div><div class="item-actions">';
+    row+='<button class="btn btn-sm btn-danger" onclick="delFundraiser(this.dataset.id)" data-id="'+fid+'">Remove</button>';
+    row+='</div></div>';
+    return row;
+  }).join('')+'</div>';
+}
+
 function openDayModal(ds){
   var evs=D.events.filter(function(e){return e.date===ds;});
   var parts=ds.split('-');
@@ -417,9 +512,9 @@ function openDayModal(ds){
 }
 function closeDayModal(e){ if(e.target===document.getElementById('day-modal')) document.getElementById('day-modal').classList.remove('open'); }
 
-function renderAll(){ renderEvents(); renderMembers(); renderTasks(); renderService(); renderMeetings(); renderCalendar(); updateHeader(); }
+function renderAll(){ renderEvents(); renderMembers(); renderTasks(); renderService(); renderMeetings(); renderCalendar(); renderFundraising(); updateHeader(); }
 
-var ready={events:false,members:false,tasks:false,service:false,meetings:false};
+var ready={events:false,members:false,tasks:false,service:false,meetings:false,fundraisers:false};
 function checkReady(){
   if(Object.values(ready).every(Boolean)){
     document.getElementById('loading-screen').style.display='none';
@@ -453,6 +548,7 @@ signInAnonymously(auth).then(function(){
   listen('tasks',   'tasks',   null);
   listen('service', 'service', function(a,b){return b.date.localeCompare(a.date);});
   listen('meetings','meetings',function(a,b){return b.date.localeCompare(a.date);});
+  listen('fundraisers','fundraisers',function(a,b){return b.date.localeCompare(a.date);});
 }).catch(function(err){
   console.error('Auth failed',err);
   document.querySelector('.loading-screen p').textContent='Connection failed. Check your internet and try again.';
